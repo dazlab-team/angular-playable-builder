@@ -1,6 +1,6 @@
 {
   "name": "@dazlab-team/angular-playable-builder",
-  "version": "11.0.1-beta.1",
+  "version": "11.0.1-beta.2",
   "description": "Builds Facebook Playable Ad source file from the Angular app sources.",
   "main": "dist/index.js",
   "files": [
