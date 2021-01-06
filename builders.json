@@ -1,0 +1,10 @@
+{
+  "$schema": "../../../node_modules/@angular-devkit/architect/src/builders-schema.json",
+  "builders": {
+    "playable": {
+      "implementation": "dist/index.js",
+      "schema": "../../../node_modules/@angular-devkit/build-angular/src/browser/schema.json",
+      "description": "Builds Facebook Playable Ad source file from the Angular app sources."
+    }
+  }
+}
