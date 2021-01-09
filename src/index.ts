@@ -17,6 +17,7 @@ import {Readable, Transform} from 'stream';
 import * as fs from 'fs';
 import * as path from 'path';
 
+const request = require('sync-request');
 const trumpet: any = require('trumpet'); // FIXME: get rid of this dependency (replace with TS one)
 
 class ReadableString extends Readable {
@@ -63,7 +64,7 @@ function transformIndexHtml(html: string, outputPath: string): Promise<string> {
     });
 }
 
-function streamReplace(needle: any, replacer: string) {
+function streamReplace(needle: any, replacer: any) {
     let chunks: any[] = [], len = 0, pos = 0;
     return new Transform({
         transform(chunk: any, encoding: string, callback: (error?: (Error | null), data?: any) => void): void {
@@ -121,7 +122,6 @@ function inlineHtml(basedir: string): NodeJS.WritableStream {
         const rel = node.getAttribute('rel').toLowerCase();
         if (rel !== 'stylesheet') return;
         const file = fix(node.getAttribute('href'));
-
         const w = node.createWriteStream({outer: true});
         w.write('<style>');
         const r = fs.createReadStream(file);
@@ -129,6 +129,17 @@ function inlineHtml(basedir: string): NodeJS.WritableStream {
         r.on('end', function () {
             w.end('</style>')
         });
+    });
+
+    tr.selectAll('style', function (node: any) {
+        const r = node.createReadStream({outer: true});
+        r.pipe(streamReplace(/url\((.*?)\)/g,
+            (str: string, url: string) => {
+                const data = url_base64(url);
+                const type = mime(url);
+                return `url("data:${type};base64,${data}")`;
+            }))
+            .pipe(node.createWriteStream({outer: true}));
     });
 
     return tr;
@@ -148,10 +159,29 @@ function inlineHtml(basedir: string): NodeJS.WritableStream {
             ;
     }
 
+    function mime(filename: string) {
+        const ext = path.extname(filename)
+            .replace(/^\./, '')
+            .toLowerCase();
+        return {
+            svg: 'image/svg+xml',
+            png: 'image/png',
+            jpg: 'image/jpeg',
+            jpeg: 'image/jpeg',
+            gif: 'image/jpeg',
+            woff: 'application/font-woff',
+            woff2: 'application/font-woff'
+        }[ext] || 'image/png';
+    }
+
+    function url_base64(url: string): string {
+        const res = request('GET', url);
+        return res.getBody().toString('base64');
+    }
+
     function inline64(node: any, name: string) {
         const href = node.getAttribute(name);
         if (/^data:/.test(href)) return;
-        const file = fix(href);
         const w = node.createWriteStream({outer: true});
         const attrs = node.getAttributes();
         w.write('<' + node.name);
@@ -159,19 +189,11 @@ function inlineHtml(basedir: string): NodeJS.WritableStream {
             if (key === name) return;
             w.write(' ' + key + '="' + enc(attrs[key]) + '"');
         });
-        const ext = path.extname(file).replace(/^\./, '').toLowerCase();
-        let type = node.getAttribute('type');
-        if (!type) type = {
-            svg: 'image/svg+xml',
-            png: 'image/png',
-            jpg: 'image/jpeg',
-            jpeg: 'image/jpeg',
-            gif: 'image/jpeg'
-        }[ext] || 'image/png';
+        const type = node.getAttribute('type') || mime(href);
         w.write(' ' + name + '="data:' + type + ';base64,');
-
         let last: any = null;
-        fs.createReadStream(file).pipe(new Transform({
+        let stream = fs.createReadStream(fix(href));
+        stream.pipe(new Transform({
             transform(chunk: any, encoding: string, callback: (error?: (Error | null), data?: any) => void): void {
                 let buf: Buffer;
                 if (last) {
